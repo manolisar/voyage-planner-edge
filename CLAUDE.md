@@ -1,7 +1,7 @@
 # Edge Class Voyage Planner — Project Charter
 
 > Single-page speed/power/fuel consumption model for **Celebrity Edge-class ships** (Edge, Apex, Beyond, Ascent, Xcel) with a heterogeneous 5-DG Wärtsilä plant: **2× W8L46F (9.6 MW) + 2× W12V46F (14.4 MW) + 1× W12V32E (6.72 MW)**.
-> Sibling of [Voyage Planner](../voyage-planner/) (4× 16V46 vessel); same architecture and Signal Flag Bands design language, different data and plant model.
+> Sibling of [Solstice Class Voyage Planner](../voyage-planner/) (4× 16V46 plant); same architecture and Signal Flag Bands design language, different data and plant model.
 
 ---
 
@@ -65,7 +65,7 @@ All pure functions under `src/engine/` and `src/data/`:
 
 ## 4. Visual design — Signal Flag Bands (v7-inspired)
 
-Carried unchanged from Voyage Planner / Voyage Tracker v7. See `../voyage-planner/CLAUDE.md` §4 for the full spec: stratified `.cat-card` motif, fuel bands (HFO orange / MGO green / LSFO indigo — never reassign), ocean-cyan accent, Manrope + IBM Plex Mono, slideUp mount animation.
+Carried unchanged from Solstice Class Voyage Planner / Voyage Tracker v7. See `../voyage-planner/CLAUDE.md` §4 for the full spec: stratified `.cat-card` motif, fuel bands (HFO orange / MGO green / LSFO indigo — never reassign), ocean-cyan accent, Manrope + IBM Plex Mono, slideUp mount animation.
 
 Engine cards additionally show `type · MW · fuel-system` under the DG label (5-card grid).
 
@@ -73,7 +73,7 @@ Engine cards additionally show `type · MW · fuel-system` under the DG label (5
 
 ## 5. Component layout
 
-Same tree as Voyage Planner with these deltas:
+Same tree as the Solstice Class Voyage Planner with these deltas:
 
 - `layout/Header.tsx` — **ship selector** (5 Edge-class ships) next to the settings button.
 - `parameters/ParametersPanel.tsx` — adds **Curve Model** select (dynamic/static); speed input max follows the selected ship's curve.
