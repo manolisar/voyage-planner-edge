@@ -37,7 +37,7 @@ export default function SettingsModal({ open, settings, onSave, onClose }: Props
   if (!open) return null;
 
   const fields: { label: string; key: keyof VesselSettings; hint: string; min: number; max: number; step: number }[] = [
-    { label: 'Hotel Load', key: 'hotelLoad', hint: 'kW — seeded from the ship’s Total Service Fuel', min: 0, max: 20000, step: 100 },
+    { label: 'Hotel Load', key: 'hotelLoad', hint: 'kW — nominal 6 MW', min: 0, max: 20000, step: 100 },
     { label: 'Sea Margin', key: 'seaMargin', hint: '%', min: -10, max: 20, step: 0.5 },
     { label: 'SFOC Deterioration', key: 'sfocDet', hint: '%', min: 0, max: 5, step: 0.1 },
     { label: 'Propulsion Auxiliaries', key: 'propAux', hint: 'kW — bow thrusters, steering gear (when underway)', min: 0, max: 5000, step: 100 },

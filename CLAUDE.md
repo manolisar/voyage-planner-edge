@@ -36,7 +36,7 @@ All pure functions under `src/engine/` and `src/data/`:
 - `data/engineDefaults.ts` — the 5-DG plant. Per-engine MCR, rpm, fuel system, and FAT SFOC curves (ISO 15550 "Biso" g/kWh) transcribed from each engine's *Record Book of Engine Parameters incl. EIAPP* (project STX FRANCE J34). Also `SFOC_SERVICE_FACTOR` (LHV 42 700 → 40 500 correction) and `DEFAULT_LOAD_LIMIT_PCT = 82`.
 - `data/shipData.ts` — per-ship speed→total-fuel curves (MT/h), static + dynamic, from the fleet model export *Speed Fuel Curves in MTh EG Class.xlsx* (modelVersion 2026_V2). Ascent/Xcel curves end at 22 kn (source rows above were non-monotonic and excluded); Edge ends at 24 kn, Apex/Beyond at 25 kn.
 - `engine/interpolation.ts` — linear interp; `serviceSFOC()` = FAT ISO SFOC × LHV correction.
-- `engine/powerModel.ts` — **inverts the ship fuel curves into speed→plant-kW tables** through the app's own dispatch pipeline under the default lineup. By construction, default config reproduces the source curves (223/236 feasible points < 0.5 %; ±5 % at a few dispatch-step speeds); what-ifs deviate physically.
+- `engine/powerModel.ts` — **inverts the propulsion fuel (curve minus Total Service Fuel) into speed→prop-kW tables** through the app's own dispatch pipeline under the default lineup. Hotel is NOT derived from the curves: a nominal **6 MW hotel load** (adjustable in settings) is added on top by consumption.ts. Model totals therefore track but do not exactly equal the source curve totals (hotel burns at dispatch SFOC instead of costing exactly the service-fuel column).
 - `engine/loadSharing.ts` — minimum-set selection (fuel priority HFO→LSFO→MGO, then largest MCR; ≥2 DGs at sea), capacity-proportional distribution.
 - `engine/consumption.ts` — orchestrates speed + ship + engines + settings → `CalculationResult`. Port/anchorage/standby use a plant-average representative engine. Fixed **MGO boiler burn 0.18 t/hr** folds into every port hour.
 
@@ -56,7 +56,7 @@ All pure functions under `src/engine/` and `src/data/`:
 
 - **Shared fuel systems:** changing fuel on one DG of a pair switches its partner (App.handleFuelChange). DG5 is MGO/LSFO only (no HFO connection).
 - **Load limit:** 82 % of MCR continuous, any fuel — adjustable in Settings. High-speed fouled-hull legs can exceed 82 % plant capacity; the app flags them *insufficient* (truthful — raise the limit to model flank speed).
-- **Hotel load default** is derived per ship/model from the curve's service-fuel column (≈6–7 MW); re-seeded when ship or model changes.
+- **Hotel load:** nominal 6 MW for all ships (adjustable in settings); constant across ship/model changes.
 - All ships carry hybrid EGCS scrubbers (RCG "AEP") → HFO is the default at-sea fuel; propulsion is 2× ABB Azipod XO (16 MW each) off the common bus.
 
 **Rule:** the engine never reaches into React. Components pass state in, get a `CalculationResult` back. No side effects.
@@ -101,7 +101,7 @@ Preview server name in `.claude/launch.json`: **`voyage-planner-edge`** (port 80
 ## 7. Operating principles
 
 - **The engine is the source of truth.** If the UI disagrees with `computeConsumption()`, fix the UI.
-- **The ship curves are the calibration target.** Default config must reproduce them; engine/data changes must re-verify the sweep (see §3).
+- **The ship curves define propulsion.** Propulsion power comes from curve-minus-service-fuel inversion; hotel is a nominal 6 MW setting layered on top (user decision 2026-06-10).
 - **Fuel colors are stable.** HFO = orange, MGO = green, LSFO = indigo. Everywhere. Always.
 - **Source data is transcribed, not invented.** SFOC tables ↔ FAT PDFs; ship curves ↔ xlsx export. Cite the document when changing a number.
 

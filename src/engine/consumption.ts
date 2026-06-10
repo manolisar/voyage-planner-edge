@@ -1,6 +1,6 @@
 import { engineConfigs, PLANT_TOTAL_KW, DEFAULT_LOAD_LIMIT_PCT } from '../data/engineDefaults';
 import { serviceSFOC } from './interpolation';
-import { interpPlantPower, shipHotelKW } from './powerModel';
+import { interpPropPower } from './powerModel';
 import { getEngineWithLimits, selectEngines, distributeLoad } from './loadSharing';
 import type {
   EngineState, EngineResult, CalculationResult, FuelType, VesselSettings, ShipId, CurveModel,
@@ -39,11 +39,9 @@ export function computeConsumption(
   settings: VesselSettings
 ): CalculationResult {
   const allEngines = getEngineWithLimits(engines, settings.loadLimit);
-  // Plant power from the ship's speed→fuel curve; subtract the curve's own
-  // service share so the user-set hotel load replaces it cleanly.
-  const propKW = speed > 0
-    ? Math.max(interpPlantPower(ship, model, speed) - shipHotelKW(ship, model), 0)
-    : 0;
+  // Propulsion power from the ship's curve net of service fuel; the
+  // user-set nominal hotel load is added on top.
+  const propKW = interpPropPower(ship, model, speed);
   const propWithMargin = propKW * (1 + settings.seaMargin / 100);
   const propAux = speed > 0 ? settings.propAux : 0;
   const totalKW = propWithMargin + propAux + settings.hotelLoad;

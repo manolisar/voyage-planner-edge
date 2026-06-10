@@ -117,8 +117,9 @@ export const FUEL_PRIORITY: Record<FuelType, number> = {
 };
 
 /**
- * hotelLoad is a placeholder — App seeds it per ship from the service-fuel
- * column of the selected speed curve (see engine/powerModel.shipHotelKW).
+ * hotelLoad: nominal 6 MW, adjustable in settings. The ship curves are used
+ * for propulsion only (curve minus Total Service Fuel); hotel is modelled
+ * on top of that through the engine dispatch.
  * propAux defaults to 0 because the ship curves already include all
  * propulsion auxiliaries; the knob remains for what-if additions.
  */

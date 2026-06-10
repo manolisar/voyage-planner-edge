@@ -3,7 +3,6 @@ import './app.css';
 import type { EngineState, FuelType, SeaLeg, PortEntry, StandbyEntry, AnchorageEntry, VesselSettings, Voyage, ShipId, CurveModel } from './types';
 import { DEFAULT_SETTINGS, engineConfigs } from './data/engineDefaults';
 import { maxSpeed } from './data/shipData';
-import { shipHotelKW } from './engine/powerModel';
 import { computeConsumption } from './engine/consumption';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
@@ -34,10 +33,7 @@ function App() {
   const [ship, setShip] = useState<ShipId>(DEFAULT_SHIP);
   const [model, setModel] = useState<CurveModel>(DEFAULT_MODEL);
   const [speed, setSpeed] = useState(15);
-  const [settings, setSettings] = useState<VesselSettings>(() => ({
-    ...DEFAULT_SETTINGS,
-    hotelLoad: Math.round(shipHotelKW(DEFAULT_SHIP, DEFAULT_MODEL)),
-  }));
+  const [settings, setSettings] = useState<VesselSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const [engines, setEngines] = useState<EngineState[]>([
@@ -65,17 +61,12 @@ function App() {
     [ship, model, speed, engines, settings]
   );
 
-  /** Ship/model change re-seeds the hotel load default from that curve's service fuel. */
   const handleShipChange = (next: ShipId) => {
     setShip(next);
-    setSettings((prev) => ({ ...prev, hotelLoad: Math.round(shipHotelKW(next, model)) }));
     setSpeed((prev) => Math.min(prev, maxSpeed(next)));
   };
 
-  const handleModelChange = (next: CurveModel) => {
-    setModel(next);
-    setSettings((prev) => ({ ...prev, hotelLoad: Math.round(shipHotelKW(ship, next)) }));
-  };
+  const handleModelChange = setModel;
 
   const handleToggle = (id: number, available: boolean) => {
     setEngines((prev) => prev.map((e) => (e.id === id ? { ...e, available } : e)));
