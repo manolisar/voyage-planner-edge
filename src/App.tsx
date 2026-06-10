@@ -1,0 +1,166 @@
+import { useState, useMemo } from 'react';
+import './app.css';
+import type { EngineState, FuelType, SeaLeg, PortEntry, StandbyEntry, AnchorageEntry, VesselSettings, Voyage, ShipId, CurveModel } from './types';
+import { DEFAULT_SETTINGS, engineConfigs } from './data/engineDefaults';
+import { maxSpeed } from './data/shipData';
+import { shipHotelKW } from './engine/powerModel';
+import { computeConsumption } from './engine/consumption';
+import Header from './components/layout/Header';
+import Footer from './components/layout/Footer';
+import Panel from './components/layout/Panel';
+import ParametersPanel from './components/parameters/ParametersPanel';
+import EnginePanel from './components/engines/EnginePanel';
+import ResultsPanel from './components/results/ResultsPanel';
+import SettingsModal from './components/settings/SettingsModal';
+import SeaLegPlanner from './components/planner/SeaLegPlanner';
+import PortHoursEntry from './components/planner/PortHoursEntry';
+import StandbyHoursEntry from './components/planner/StandbyHoursEntry';
+import AnchorageHoursEntry from './components/planner/AnchorageHoursEntry';
+import VoyageSummary from './components/voyage/VoyageSummary';
+import VoyageMeta from './components/voyage/VoyageMeta';
+import VoyageExport from './components/voyage/VoyageExport';
+
+function getLocalDateString(now: Date): string {
+  const year = now.getFullYear();
+  const month = `${now.getMonth() + 1}`.padStart(2, '0');
+  const day = `${now.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const DEFAULT_SHIP: ShipId = 'EG';
+const DEFAULT_MODEL: CurveModel = 'dynamic';
+
+function App() {
+  const [ship, setShip] = useState<ShipId>(DEFAULT_SHIP);
+  const [model, setModel] = useState<CurveModel>(DEFAULT_MODEL);
+  const [speed, setSpeed] = useState(15);
+  const [settings, setSettings] = useState<VesselSettings>(() => ({
+    ...DEFAULT_SETTINGS,
+    hotelLoad: Math.round(shipHotelKW(DEFAULT_SHIP, DEFAULT_MODEL)),
+  }));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const [engines, setEngines] = useState<EngineState[]>([
+    { id: 1, available: true, fuel: 'HFO' },
+    { id: 2, available: true, fuel: 'HFO' },
+    { id: 3, available: true, fuel: 'HFO' },
+    { id: 4, available: true, fuel: 'HFO' },
+    { id: 5, available: true, fuel: 'MGO' },
+  ]);
+
+  const [legs, setLegs] = useState<SeaLeg[]>([]);
+  const [portEntry, setPortEntry] = useState<PortEntry>({ hours: 0, engineCount: 1, fuelType: 'MGO' });
+  const [standbyEntry, setStandbyEntry] = useState<StandbyEntry>({ hours: 0, engineCount: 2, avgPowerMW: 14, fuelType: 'MGO' });
+  const [anchorageEntry, setAnchorageEntry] = useState<AnchorageEntry>({ hours: 0, engineCount: 2, avgPowerMW: 10, fuelType: 'MGO' });
+
+  const [cruiseName, setCruiseName] = useState('');
+  const [voyageFrom, setVoyageFrom] = useState('');
+  const [voyageTo, setVoyageTo] = useState('');
+  const [voyageDate, setVoyageDate] = useState(getLocalDateString(new Date()));
+
+  const shipMaxSpeed = maxSpeed(ship);
+
+  const result = useMemo(
+    () => computeConsumption(ship, model, speed, engines, settings),
+    [ship, model, speed, engines, settings]
+  );
+
+  /** Ship/model change re-seeds the hotel load default from that curve's service fuel. */
+  const handleShipChange = (next: ShipId) => {
+    setShip(next);
+    setSettings((prev) => ({ ...prev, hotelLoad: Math.round(shipHotelKW(next, model)) }));
+    setSpeed((prev) => Math.min(prev, maxSpeed(next)));
+  };
+
+  const handleModelChange = (next: CurveModel) => {
+    setModel(next);
+    setSettings((prev) => ({ ...prev, hotelLoad: Math.round(shipHotelKW(ship, next)) }));
+  };
+
+  const handleToggle = (id: number, available: boolean) => {
+    setEngines((prev) => prev.map((e) => (e.id === id ? { ...e, available } : e)));
+  };
+
+  /**
+   * DGs on a common fuel system burn the same fuel: changing DG1 also
+   * switches DG2 (FS1), DG3 ↔ DG4 (FS2); DG5 is alone on FS3.
+   */
+  const handleFuelChange = (id: number, fuel: FuelType) => {
+    const system = engineConfigs.find((c) => c.id === id)?.fuelSystem;
+    setEngines((prev) =>
+      prev.map((e) => {
+        const cfg = engineConfigs.find((c) => c.id === e.id);
+        if (!cfg || cfg.fuelSystem !== system) return e;
+        // A paired engine that can't burn the chosen fuel keeps its own.
+        return cfg.allowedFuels.includes(fuel) ? { ...e, fuel } : e;
+      })
+    );
+  };
+
+  const handleLoadVoyage = (v: Pick<Voyage, 'ship' | 'model' | 'cruiseName' | 'from' | 'to' | 'date' | 'seaLegs' | 'portEntry' | 'standbyEntry' | 'anchorageEntry'>) => {
+    if (v.ship) handleShipChange(v.ship);
+    if (v.model) setModel(v.model);
+    setCruiseName(v.cruiseName);
+    setVoyageFrom(v.from);
+    setVoyageTo(v.to);
+    setVoyageDate(v.date);
+    setLegs(v.seaLegs);
+    setPortEntry(v.portEntry);
+    setStandbyEntry(v.standbyEntry);
+    setAnchorageEntry(v.anchorageEntry);
+  };
+
+  return (
+    <div className="max-w-[1000px] mx-auto px-6 pb-16">
+      <Header ship={ship} onShipChange={handleShipChange} onOpenSettings={() => setSettingsOpen(true)} />
+      <SettingsModal open={settingsOpen} settings={settings} onSave={setSettings} onClose={() => setSettingsOpen(false)} />
+
+      <EnginePanel engines={engines} results={result.engineResults} onToggle={handleToggle} onFuelChange={handleFuelChange} />
+      <ParametersPanel
+        speed={speed} settings={settings} model={model} maxSpeed={shipMaxSpeed}
+        onSpeedChange={setSpeed} onSettingsChange={setSettings} onModelChange={handleModelChange}
+      />
+      <ResultsPanel result={result} />
+
+      {/* Voyage Builder */}
+      <Panel tag="PLAN" tagStyle="legs" title="Cruise Leg Planner" delay={0.24}>
+        <SeaLegPlanner
+          legs={legs} currentResult={result} speed={speed} settings={settings}
+          onAddLeg={(leg) => setLegs((prev) => [...prev, leg])}
+          onUpdateLeg={(leg) => setLegs((prev) => prev.map((l) => (l.id === leg.id ? leg : l)))}
+          onRemoveLeg={(id) => setLegs((prev) => prev.filter((l) => l.id !== id))}
+          onClearLegs={() => setLegs([])}
+        />
+      </Panel>
+
+      <Panel tag="VOYAGE" tagStyle="voyage" title="Voyage Builder" delay={0.3}>
+        <div className="p-5 space-y-5">
+          <VoyageMeta
+            cruiseName={cruiseName} from={voyageFrom} to={voyageTo} date={voyageDate}
+            onCruiseNameChange={setCruiseName} onFromChange={setVoyageFrom} onToChange={setVoyageTo} onDateChange={setVoyageDate}
+          />
+
+          <div className="grid grid-cols-1 gap-4 mt-4">
+            <PortHoursEntry entry={portEntry} hotelLoad={settings.hotelLoad} sfocDet={settings.sfocDet} onChange={setPortEntry} />
+            <AnchorageHoursEntry entry={anchorageEntry} sfocDet={settings.sfocDet} onChange={setAnchorageEntry} />
+            <StandbyHoursEntry entry={standbyEntry} sfocDet={settings.sfocDet} onChange={setStandbyEntry} />
+          </div>
+
+          <VoyageSummary legs={legs} portEntry={portEntry} standbyEntry={standbyEntry} anchorageEntry={anchorageEntry} hotelLoad={settings.hotelLoad} sfocDet={settings.sfocDet} />
+
+          <VoyageExport
+            ship={ship} model={model}
+            cruiseName={cruiseName} from={voyageFrom} to={voyageTo} date={voyageDate}
+            legs={legs} portEntry={portEntry} standbyEntry={standbyEntry} anchorageEntry={anchorageEntry}
+            hotelLoad={settings.hotelLoad} sfocDet={settings.sfocDet}
+            onLoadVoyage={handleLoadVoyage}
+          />
+        </div>
+      </Panel>
+
+      <Footer />
+    </div>
+  );
+}
+
+export default App;
