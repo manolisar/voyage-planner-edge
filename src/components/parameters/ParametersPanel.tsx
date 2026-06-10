@@ -63,7 +63,7 @@ export default function ParametersPanel({ speed, settings, model, maxSpeed, onSp
           </select>
           <div id={modelHintId} className="text-[0.65rem] text-dim mt-1 leading-snug">dynamic = at selected month, incl. fouling</div>
         </div>
-        <Input label="Hotel Load" hint="kW — accommodation & services load" name="hotelLoad" value={settings.hotelLoad}
+        <Input label="Hotel Load" hint="kW — seeded from the ship's Total Service Fuel" name="hotelLoad" value={settings.hotelLoad}
           onChange={(v) => onSettingsChange({ ...settings, hotelLoad: v })} min={0} max={20000} step={100} />
         <Input label="Sea Margin" hint="% (−10 to +20)" name="seaMargin" value={settings.seaMargin}
           onChange={(v) => onSettingsChange({ ...settings, seaMargin: v })} min={-10} max={20} step={0.5} />
