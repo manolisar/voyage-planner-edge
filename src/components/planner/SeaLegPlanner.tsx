@@ -23,7 +23,7 @@ function engSig(a: LegAssumptions): string {
 }
 
 function assumptionsTitle(a: LegAssumptions, legSpeed: number): string {
-  return `Captured setup — Speed ${legSpeed.toFixed(1)} kn · Sea margin ${a.seaMargin}% · SFOC det ${a.sfocDet}% · Hotel ${a.hotelLoad} kW · Prop-aux ${a.propAux} kW · ${engSig(a)}`;
+  return `Captured setup — Speed ${legSpeed.toFixed(1)} kn · Condition ${a.conditionPct}% · SFOC det ${a.sfocDet}% · Hotel ${a.hotelLoad} kW · Sailing aux ${a.sailingAux} kW · ${a.shareMode === 'optimal' ? 'Sea Optimal' : 'Equal %'} · ${engSig(a)}`;
 }
 
 export default function SeaLegPlanner({ legs, currentResult, speed, settings, onAddLeg, onUpdateLeg, onRemoveLeg, onClearLegs }: Props) {
@@ -31,10 +31,11 @@ export default function SeaLegPlanner({ legs, currentResult, speed, settings, on
   const hoursId = useId();
 
   const currentAssumptions: LegAssumptions = {
-    seaMargin: settings.seaMargin,
+    conditionPct: settings.conditionPct,
     sfocDet: settings.sfocDet,
     hotelLoad: settings.hotelLoad,
-    propAux: settings.propAux,
+    sailingAux: settings.sailingAux,
+    shareMode: settings.shareMode,
     hfoRunning: currentResult.hfoRunning,
     mgoRunning: currentResult.mgoRunning,
     lsfoRunning: currentResult.lsfoRunning,
@@ -46,10 +47,11 @@ export default function SeaLegPlanner({ legs, currentResult, speed, settings, on
     if (!a) return false;
     return (
       leg.speed !== speed ||
-      a.seaMargin !== currentAssumptions.seaMargin ||
+      a.conditionPct !== currentAssumptions.conditionPct ||
       a.sfocDet !== currentAssumptions.sfocDet ||
       a.hotelLoad !== currentAssumptions.hotelLoad ||
-      a.propAux !== currentAssumptions.propAux ||
+      a.sailingAux !== currentAssumptions.sailingAux ||
+      a.shareMode !== currentAssumptions.shareMode ||
       a.hfoRunning !== currentAssumptions.hfoRunning ||
       a.mgoRunning !== currentAssumptions.mgoRunning ||
       a.lsfoRunning !== currentAssumptions.lsfoRunning
@@ -190,7 +192,7 @@ export default function SeaLegPlanner({ legs, currentResult, speed, settings, on
                         >
                           <span>{engSig(leg.assumptions)}</span>
                           <span className="text-faint">·</span>
-                          <span>SM {leg.assumptions.seaMargin}%</span>
+                          <span>Cond {leg.assumptions.conditionPct}%</span>
                           {stale && (
                             <span
                               className="inline-block w-1.5 h-1.5 rounded-full shrink-0"

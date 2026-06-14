@@ -3,13 +3,19 @@ export type FuelType = 'HFO' | 'MGO' | 'LSFO';
 /** Edge-class ships, keyed by the fleet two-letter codes used in the model exports. */
 export type ShipId = 'EG' | 'AX' | 'BY' | 'AT' | 'XL';
 
-/** Which speed→fuel curve to use: as-built static model, or dynamic model at the selected month (hull fouling etc.). */
-export type CurveModel = 'static' | 'dynamic';
+/** PMS DG class (M40E4937 §1). */
+export type DGClass = 'Large' | 'Medium' | 'Small';
 
+/** Load-sharing mode (M40E4937 §4.2.3.1). */
+export type ShareMode = 'equal' | 'optimal';
+
+/** One point of a FAT "Fuel Oil Consumption (ISO 15550)" curve (verified spec §8). */
 export interface SfocPoint {
-  /** Load fraction of engine MCR (0–1.1) */
+  /** Load fraction of MCR (0–1) */
   load: number;
-  /** ISO 15550 corrected specific fuel consumption, g/kWh */
+  /** Measured fuel flow at that load, kg/h (engine's own rating) */
+  fuelKgh: number;
+  /** Specific fuel consumption, g/kWh (display only) */
   sfoc: number;
 }
 
@@ -20,18 +26,26 @@ export interface EngineConfig {
   type: string;
   /** FAT test protocol no. (engine serial) */
   serial: string;
-  /** MCR, kW */
-  nominalKW: number;
-  /** Rated speed, rpm */
+  /** PMS class — sets dispatch ladder behaviour */
+  dgClass: DGClass;
+  /** FAT mechanical rating, kW */
+  mechKW: number;
+  /** M40E4937 electrical (busbar) rating, kW — used for all PMS/load calcs */
+  elecKW: number;
   rpm: number;
+  /** Switchboard: HMS1 (FWD) or HMS2 (AFT) */
+  switchboard: 'HMS1' | 'HMS2';
   /**
-   * Fuel-system group. DGs sharing a fuel system must burn the same fuel:
-   * FS1 = DG1+DG2, FS2 = DG3+DG4, FS3 = DG5 (own system).
+   * Fuel-system group (shared counter). FS1 = DG1+DG2, FS2 = DG3+DG4,
+   * FS3 = DG5 (own). DGs on one system burn the same fuel.
    */
   fuelSystem: string;
+  /** DG5: MGO/LSFO only (no HFO bunker connection) */
   mgoLocked: boolean;
   allowedFuels: FuelType[];
-  /** FAT SFOC curve (ISO 15550 corrected), per engine */
+  /** Whether this DG joins automatic sea propulsion configs (DG5 does not). */
+  seaDispatch: boolean;
+  /** FAT SFOC curve (verified spec §8), per engine type */
   sfocCurve: SfocPoint[];
 }
 
@@ -45,25 +59,36 @@ export interface EngineResult {
   id: number;
   status: 'RUNNING' | 'STANDBY' | 'OFFLINE';
   loadKW: number;
+  /** Load as fraction of electrical rating */
   loadFraction: number;
-  loadLimit: number;
-  nominalKW: number;
+  /** PMS start threshold (fraction) used for this run */
+  pmsThreshold: number;
+  elecKW: number;
+  /** Over 100% of electrical rating */
   overloaded: boolean;
   fuelConsumption: number;
   fuel: FuelType;
 }
 
 export interface VesselSettings {
+  /** Hotel/service electrical load, kW (nominal 6 MW) */
   hotelLoad: number;
-  seaMargin: number;
+  /** Condition factor, % applied to Static propulsion power (100 = clean hull) */
+  conditionPct: number;
+  /** SFOC deterioration, % */
   sfocDet: number;
-  propAux: number;
-  /** Max continuous DG load as % of MCR (plant nominal: 82%, any fuel). */
-  loadLimit: number;
+  /** Sailing auxiliaries, kW — applied when underway (V>0); nominal 1.5 MW */
+  sailingAux: number;
+  /** PMS load-dependent start threshold, % (M40E4937 §4.2.7 = 85) */
+  pmsStart: number;
+  /** Load-sharing mode */
+  shareMode: ShareMode;
 }
 
 export interface CalculationResult {
+  /** Propulsion power demand after condition factor + pod clamp, kW */
   propPowerKW: number;
+  /** Total busbar electrical demand (prop + hotel + aux), kW */
   totalPowerKW: number;
   avgLoadPercent: number;
   engineResults: EngineResult[];
@@ -71,7 +96,12 @@ export interface CalculationResult {
   mgoRate: number;
   lsfoRate: number;
   totalRate: number;
+  /** Demand exceeds available DG capacity */
   insufficient: boolean;
+  /** Propulsion demand exceeds the 32 MW pod ceiling — speed unachievable */
+  podLimited: boolean;
+  /** DG config label, e.g. "2L+1M" */
+  configLabel: string;
   numRunning: number;
   numAvailable: number;
   hfoRunning: number;
@@ -81,10 +111,11 @@ export interface CalculationResult {
 
 /** Snapshot of the panel setup at the moment a leg was added. */
 export interface LegAssumptions {
-  seaMargin: number;
+  conditionPct: number;
   sfocDet: number;
   hotelLoad: number;
-  propAux: number;
+  sailingAux: number;
+  shareMode: ShareMode;
   hfoRunning: number;
   mgoRunning: number;
   lsfoRunning: number;
@@ -125,10 +156,10 @@ export interface AnchorageEntry {
 }
 
 export interface Voyage {
-  /** Ship the forecast was built for. Optional for voyages saved before ship selection existed. */
+  /** Ship the forecast was built for. */
   ship?: ShipId;
-  /** Curve model the forecast was built with. */
-  model?: CurveModel;
+  /** Condition factor (%) the forecast was built with. */
+  conditionPct?: number;
   cruiseName: string;
   from: string;
   to: string;

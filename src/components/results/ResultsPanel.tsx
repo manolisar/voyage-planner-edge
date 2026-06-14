@@ -26,7 +26,7 @@ export default function ResultsPanel({ result }: Props) {
           {/* Engines + Load */}
           <div className="px-4 py-3.5">
             <div className="text-[0.5rem] font-semibold tracking-[1.5px] uppercase text-dim">
-              {r.numRunning}/{r.numAvailable} Engines
+              {r.numRunning}/{r.numAvailable} DG{r.configLabel !== '—' ? ` · ${r.configLabel}` : ''}
             </div>
             <div className="font-mono text-[1.05rem] font-bold tabular-nums text-txt leading-tight">
               {r.numRunning > 0 ? r.avgLoadPercent.toFixed(1) : '--'}<span className="text-[0.5rem] font-normal text-dim ml-0.5">% load</span>
@@ -80,6 +80,11 @@ export default function ResultsPanel({ result }: Props) {
 
         {/* Warning bar */}
         <div role="status" aria-live="polite">
+          {r.podLimited && (
+            <div className="text-center py-1.5 px-4 text-[0.72rem] font-bold text-danger bg-danger-light border-t border-danger/20">
+              ⚠ Above 32 MW pod ceiling — speed unachievable at this condition factor.
+            </div>
+          )}
           {r.insufficient && (
             <div className="text-center py-1.5 px-4 text-[0.72rem] font-bold text-danger bg-danger-light border-t border-danger/20">
               ⚠ Insufficient Power — increase available engines or reduce demand.

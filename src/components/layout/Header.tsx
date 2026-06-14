@@ -39,7 +39,7 @@ export default function Header({ ship, onShipChange, onOpenSettings }: Props) {
           value={ship}
           onChange={(e) => onShipChange(e.target.value as ShipId)}
           aria-label="Select ship"
-          title="Ship — selects the speed/fuel model curve"
+          title="Ship — selects the Static propulsion-power curve"
           className="font-mono text-[0.8rem] font-semibold bg-surface border border-bdr rounded-xl text-txt py-2.5 px-3 cursor-pointer outline-none hover:border-faint focus:border-ocean-500 focus:shadow-[0_0_0_3px_rgba(6,182,212,0.15)] transition-[border-color,box-shadow]"
         >
           {ships.map((s) => (

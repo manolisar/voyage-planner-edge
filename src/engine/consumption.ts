@@ -1,9 +1,10 @@
-import { engineConfigs, PLANT_TOTAL_KW, DEFAULT_LOAD_LIMIT_PCT } from '../data/engineDefaults';
-import { serviceSFOC } from './interpolation';
-import { interpPropPower } from './powerModel';
-import { getEngineWithLimits, selectEngines, distributeLoad } from './loadSharing';
+import { engineConfigs, PLANT_TOTAL_ELEC_KW } from '../data/engineDefaults';
+import { interpFuelKgh, interpSFOC } from './interpolation';
+import { fuelFactor } from './fuelBasis';
+import { propPowerMW } from './powerModel';
+import { withConfig, dispatch, distributeLoad, configLabel } from './loadSharing';
 import type {
-  EngineState, EngineResult, CalculationResult, FuelType, VesselSettings, ShipId, CurveModel,
+  EngineState, EngineResult, CalculationResult, FuelType, VesselSettings, ShipId,
 } from '../types';
 
 export interface StaticConsumptionResult {
@@ -17,171 +18,141 @@ export interface StaticConsumptionResult {
 export const BOILER_RATE_MT_PER_HR = 0.18;
 
 export interface PortConsumption {
-  /** DG (hotel load) rate, t/hr — boiler excluded */
   dgRate: number;
-  /** Boiler rate, t/hr (MGO), constant while in port */
   boilerRate: number;
-  /** Boiler fuel for the given hours, MT (MGO) */
   boilerMT: number;
-  /** Per-fuel totals for the given hours, MT — boiler folded into MGO */
   perFuelMT: { hfo: number; mgo: number; lsfo: number };
-  /** Total fuel for the given hours, MT (DG + boiler) */
   totalMT: number;
   insufficient: boolean;
   availablePowerKW: number;
 }
 
+/**
+ * Forward model: Static propulsion power × condition factor (pod-clamped) +
+ * hotel + sailing aux → busbar demand → PMS dispatch → per-engine FAT fuel.
+ */
 export function computeConsumption(
   ship: ShipId,
-  model: CurveModel,
   speed: number,
   engines: EngineState[],
   settings: VesselSettings
 ): CalculationResult {
-  const allEngines = getEngineWithLimits(engines, settings.loadLimit);
-  // Propulsion power from the ship's curve net of service fuel; the
-  // user-set nominal hotel load is added on top.
-  const propKW = interpPropPower(ship, model, speed);
-  const propWithMargin = propKW * (1 + settings.seaMargin / 100);
-  const propAux = speed > 0 ? settings.propAux : 0;
-  const totalKW = propWithMargin + propAux + settings.hotelLoad;
+  const all = withConfig(engines);
+  const prop = propPowerMW(ship, speed, settings.conditionPct);
+  const propKW = prop.deliveredMW * 1000;
+  const auxKW = speed > 0 ? settings.sailingAux : 0;
+  const totalKW = propKW + settings.hotelLoad + auxKW;
 
-  const { selected: runningEngines, allAvailable, insufficient } = selectEngines(
-    allEngines,
-    totalKW,
-    speed
-  );
-  const numRunning = runningEngines.length;
-  const runningIds = new Set(runningEngines.map((e) => e.id));
-
-  const engineLoads = distributeLoad(runningEngines, totalKW);
+  const d = dispatch(all, totalKW, speed, settings.pmsStart);
+  const runningIds = new Set(d.selected.map((e) => e.id));
+  const loads = distributeLoad(d.selected, totalKW, settings.shareMode);
 
   let hfoRate = 0, mgoRate = 0, lsfoRate = 0;
+  const detFactor = 1 + settings.sfocDet / 100;
 
-  runningEngines.forEach((e) => {
-    const kw = engineLoads.get(e.id) || 0;
-    const lf = kw / e.config.nominalKW;
-    const baseSFOC = serviceSFOC(e.config, lf);
-    const sfoc = baseSFOC * (1 + settings.sfocDet / 100);
-    const cons = (sfoc * kw) / 1e6;
+  const engineFuel = (id: number, kw: number, fuel: FuelType): number => {
+    const cfg = engineConfigs.find((c) => c.id === id)!;
+    const lf = kw / cfg.elecKW;
+    return (interpFuelKgh(cfg, lf) * fuelFactor(fuel) * detFactor) / 1000; // MT/h
+  };
+
+  d.selected.forEach((e) => {
+    const kw = loads.get(e.id) || 0;
+    const cons = engineFuel(e.id, kw, e.fuel);
     if (e.fuel === 'HFO') hfoRate += cons;
     else if (e.fuel === 'LSFO') lsfoRate += cons;
     else mgoRate += cons;
   });
 
-  const engineResults: EngineResult[] = allEngines.map((eng) => {
+  const engineResults: EngineResult[] = all.map((eng) => {
+    const base = {
+      id: eng.id, elecKW: eng.config.elecKW, fuel: eng.fuel,
+      pmsThreshold: settings.pmsStart / 100,
+    };
     if (!eng.available) {
-      return {
-        id: eng.id, status: 'OFFLINE' as const, loadKW: 0, loadFraction: 0,
-        loadLimit: eng.loadLimit, nominalKW: eng.config.nominalKW,
-        overloaded: false, fuelConsumption: 0, fuel: eng.fuel,
-      };
+      return { ...base, status: 'OFFLINE' as const, loadKW: 0, loadFraction: 0, overloaded: false, fuelConsumption: 0 };
     }
     if (runningIds.has(eng.id)) {
-      const kw = engineLoads.get(eng.id) || 0;
-      const lf = kw / eng.config.nominalKW;
-      const baseSFOC = serviceSFOC(eng.config, lf);
-      const sfoc = baseSFOC * (1 + settings.sfocDet / 100);
+      const kw = loads.get(eng.id) || 0;
+      const lf = kw / eng.config.elecKW;
       return {
-        id: eng.id, status: 'RUNNING' as const, loadKW: kw, loadFraction: lf,
-        loadLimit: eng.loadLimit, nominalKW: eng.config.nominalKW,
-        overloaded: lf > eng.loadLimit,
-        fuelConsumption: (sfoc * kw) / 1e6, fuel: eng.fuel,
+        ...base, status: 'RUNNING' as const, loadKW: kw, loadFraction: lf,
+        overloaded: lf > 1.0, fuelConsumption: engineFuel(eng.id, kw, eng.fuel),
       };
     }
-    return {
-      id: eng.id, status: 'STANDBY' as const, loadKW: 0, loadFraction: 0,
-      loadLimit: eng.loadLimit, nominalKW: eng.config.nominalKW,
-      overloaded: false, fuelConsumption: 0, fuel: eng.fuel,
-    };
+    return { ...base, status: 'STANDBY' as const, loadKW: 0, loadFraction: 0, overloaded: false, fuelConsumption: 0 };
   });
 
-  const runningNominal = runningEngines.reduce((s, e) => s + e.config.nominalKW, 0);
-  const avgLoadPercent = runningNominal > 0 ? (totalKW / runningNominal) * 100 : 0;
+  const avgLoadPercent = d.ceilingKW > 0 ? (totalKW / d.ceilingKW) * 100 : 0;
 
   return {
-    propPowerKW: propWithMargin + propAux,
+    propPowerKW: propKW,
     totalPowerKW: totalKW,
     avgLoadPercent,
     engineResults,
     hfoRate, mgoRate, lsfoRate,
     totalRate: hfoRate + mgoRate + lsfoRate,
-    insufficient,
-    numRunning,
-    numAvailable: allAvailable.length,
-    hfoRunning: runningEngines.filter((e) => e.fuel === 'HFO').length,
-    mgoRunning: runningEngines.filter((e) => e.fuel === 'MGO').length,
-    lsfoRunning: runningEngines.filter((e) => e.fuel === 'LSFO').length,
+    insufficient: d.insufficient,
+    podLimited: prop.podLimited,
+    configLabel: d.selected.length ? configLabel(d.selected) : '—',
+    numRunning: d.selected.length,
+    numAvailable: d.allAvailable.length,
+    hfoRunning: d.selected.filter((e) => e.fuel === 'HFO').length,
+    mgoRunning: d.selected.filter((e) => e.fuel === 'MGO').length,
+    lsfoRunning: d.selected.filter((e) => e.fuel === 'LSFO').length,
   };
 }
 
 /**
  * Port/standby/anchorage boxes specify only an engine *count*, not which DGs,
- * so they use a plant-representative engine: average MCR with the
- * capacity-weighted SFOC curve of all five DGs.
+ * so they use a plant-representative engine: average electrical MCR with the
+ * capacity-weighted FAT fuel curve of all five DGs. PMS start threshold caps
+ * the usable load per engine.
  */
-const AVG_NOMINAL_KW = PLANT_TOTAL_KW / engineConfigs.length;
+const AVG_ELEC_KW = PLANT_TOTAL_ELEC_KW / engineConfigs.length;
 
+/** Capacity-weighted plant SFOC (g/kWh) at a load fraction — representative average DG. */
 function avgPlantSFOC(loadFrac: number): number {
   let weighted = 0;
-  for (const e of engineConfigs) weighted += e.nominalKW * serviceSFOC(e, loadFrac);
-  return weighted / PLANT_TOTAL_KW;
+  for (const e of engineConfigs) weighted += e.elecKW * interpSFOC(e, loadFrac);
+  return weighted / PLANT_TOTAL_ELEC_KW;
 }
 
-/** Compute fuel consumption for port/standby (no speed, custom power) */
 export function computeStaticConsumption(
   totalPowerKW: number,
   engineCount: number,
   fuelType: FuelType,
   sfocDet: number,
-  loadLimitPct: number = DEFAULT_LOAD_LIMIT_PCT
+  pmsStartPct = 85
 ): StaticConsumptionResult {
   if (engineCount <= 0 || totalPowerKW <= 0) {
-    return {
-      rate: 0,
-      perFuel: { hfo: 0, mgo: 0, lsfo: 0 },
-      availablePowerKW: 0,
-      insufficient: false,
-    };
+    return { rate: 0, perFuel: { hfo: 0, mgo: 0, lsfo: 0 }, availablePowerKW: 0, insufficient: false };
   }
-
-  const loadLimit = loadLimitPct / 100;
-  const maxKW = AVG_NOMINAL_KW * loadLimit;
+  const limit = pmsStartPct / 100;
+  const maxKW = AVG_ELEC_KW * limit;
   const availablePowerKW = maxKW * engineCount;
   const perEngineKW = Math.min(totalPowerKW / engineCount, maxKW);
-  const lf = perEngineKW / AVG_NOMINAL_KW;
-  const baseSFOC = avgPlantSFOC(lf);
-  const sfoc = baseSFOC * (1 + sfocDet / 100);
-  const perEngineCons = (sfoc * perEngineKW) / 1e6;
-  const totalRate = perEngineCons * engineCount;
+  const lf = perEngineKW / AVG_ELEC_KW;
+  const sfoc = avgPlantSFOC(lf) * fuelFactor(fuelType) * (1 + sfocDet / 100);
+  const totalRate = (sfoc * perEngineKW * engineCount) / 1e6; // MT/h
 
   const perFuel = { hfo: 0, mgo: 0, lsfo: 0 };
   if (fuelType === 'HFO') perFuel.hfo = totalRate;
   else if (fuelType === 'MGO') perFuel.mgo = totalRate;
   else perFuel.lsfo = totalRate;
 
-  return {
-    rate: totalRate,
-    perFuel,
-    availablePowerKW,
-    insufficient: totalPowerKW > availablePowerKW,
-  };
+  return { rate: totalRate, perFuel, availablePowerKW, insufficient: totalPowerKW > availablePowerKW };
 }
 
-/**
- * Port consumption = DG hotel-load burn + a fixed MGO boiler burn (0.18 t/hr),
- * both applied for the same `hours`. Single source of truth so the port box,
- * the voyage summary, and the export all roll up boiler identically.
- */
 export function computePortConsumption(
   hotelLoadKW: number,
   engineCount: number,
   fuelType: FuelType,
   sfocDet: number,
   hours: number,
-  loadLimitPct: number = DEFAULT_LOAD_LIMIT_PCT
+  pmsStartPct = 85
 ): PortConsumption {
-  const dg = computeStaticConsumption(hotelLoadKW, engineCount, fuelType, sfocDet, loadLimitPct);
+  const dg = computeStaticConsumption(hotelLoadKW, engineCount, fuelType, sfocDet, pmsStartPct);
   const boilerMT = BOILER_RATE_MT_PER_HR * hours;
   const perFuelMT = {
     hfo: dg.perFuel.hfo * hours,

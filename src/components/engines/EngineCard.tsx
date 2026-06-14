@@ -35,10 +35,14 @@ interface Props {
 }
 
 export default function EngineCard({ config, state, result, onToggle, onFuelChange }: Props) {
-  const barPct = result.status === 'RUNNING'
-    ? Math.min((result.loadFraction / result.loadLimit) * 100, 100)
-    : 0;
-  const barColor = result.overloaded ? 'var(--color-danger)' : fuelBarColors[state.fuel];
+  // Bar shows load as % of electrical rating; amber once past the PMS start threshold.
+  const barPct = result.status === 'RUNNING' ? Math.min(result.loadFraction * 100, 100) : 0;
+  const overThreshold = result.status === 'RUNNING' && result.loadFraction > result.pmsThreshold;
+  const barColor = result.overloaded
+    ? 'var(--color-danger)'
+    : overThreshold
+      ? '#f59e0b'
+      : fuelBarColors[state.fuel];
 
   return (
     <div
@@ -50,8 +54,8 @@ export default function EngineCard({ config, state, result, onToggle, onFuelChan
         <span>{config.label}</span>
         <span className={fuelBadgeClass[state.fuel]}>{state.fuel}</span>
       </div>
-      <div className="font-mono text-[0.6rem] text-dim mb-2 leading-snug" title={`FAT ${config.serial} · ${config.rpm} rpm · fuel system ${config.fuelSystem}`}>
-        {config.type} · {(config.nominalKW / 1000).toFixed(config.nominalKW % 1000 === 0 ? 1 : 2)} MW · {config.fuelSystem}
+      <div className="font-mono text-[0.6rem] text-dim mb-2 leading-snug" title={`${config.dgClass} · FAT ${config.serial} · ${config.rpm} rpm · ${config.switchboard} · fuel system ${config.fuelSystem}`}>
+        {config.type} · {(config.elecKW / 1000).toFixed(2)} MW · {config.fuelSystem}
       </div>
 
       {/* Toggle */}

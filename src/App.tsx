@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import './app.css';
-import type { EngineState, FuelType, SeaLeg, PortEntry, StandbyEntry, AnchorageEntry, VesselSettings, Voyage, ShipId, CurveModel } from './types';
+import type { EngineState, FuelType, SeaLeg, PortEntry, StandbyEntry, AnchorageEntry, VesselSettings, Voyage, ShipId } from './types';
 import { DEFAULT_SETTINGS, engineConfigs } from './data/engineDefaults';
-import { maxSpeed } from './data/shipData';
+import { maxSpeed, getShip } from './data/shipData';
 import { computeConsumption } from './engine/consumption';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
@@ -27,22 +27,26 @@ function getLocalDateString(now: Date): string {
 }
 
 const DEFAULT_SHIP: ShipId = 'EG';
-const DEFAULT_MODEL: CurveModel = 'dynamic';
+
+/** Default DG lineup for a ship: mains on the ship's fuel basis, DG5 on MGO. */
+function lineupFor(shipId: ShipId): EngineState[] {
+  const mainFuel = getShip(shipId).defaultMainFuel;
+  return [
+    { id: 1, available: true, fuel: mainFuel },
+    { id: 2, available: true, fuel: mainFuel },
+    { id: 3, available: true, fuel: mainFuel },
+    { id: 4, available: true, fuel: mainFuel },
+    { id: 5, available: true, fuel: 'MGO' },
+  ];
+}
 
 function App() {
   const [ship, setShip] = useState<ShipId>(DEFAULT_SHIP);
-  const [model, setModel] = useState<CurveModel>(DEFAULT_MODEL);
   const [speed, setSpeed] = useState(15);
   const [settings, setSettings] = useState<VesselSettings>(DEFAULT_SETTINGS);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [engines, setEngines] = useState<EngineState[]>([
-    { id: 1, available: true, fuel: 'HFO' },
-    { id: 2, available: true, fuel: 'HFO' },
-    { id: 3, available: true, fuel: 'HFO' },
-    { id: 4, available: true, fuel: 'HFO' },
-    { id: 5, available: true, fuel: 'MGO' },
-  ]);
+  const [engines, setEngines] = useState<EngineState[]>(() => lineupFor(DEFAULT_SHIP));
 
   const [legs, setLegs] = useState<SeaLeg[]>([]);
   const [portEntry, setPortEntry] = useState<PortEntry>({ hours: 0, engineCount: 1, fuelType: 'MGO' });
@@ -57,16 +61,19 @@ function App() {
   const shipMaxSpeed = maxSpeed(ship);
 
   const result = useMemo(
-    () => computeConsumption(ship, model, speed, engines, settings),
-    [ship, model, speed, engines, settings]
+    () => computeConsumption(ship, speed, engines, settings),
+    [ship, speed, engines, settings]
   );
 
   const handleShipChange = (next: ShipId) => {
     setShip(next);
     setSpeed((prev) => Math.min(prev, maxSpeed(next)));
+    // Re-seed the DG fuel basis to the new ship (mains HFO, or MGO for Xcel).
+    setEngines((prev) => {
+      const mainFuel = getShip(next).defaultMainFuel;
+      return prev.map((e) => (e.id === 5 ? e : { ...e, fuel: mainFuel }));
+    });
   };
-
-  const handleModelChange = setModel;
 
   const handleToggle = (id: number, available: boolean) => {
     setEngines((prev) => prev.map((e) => (e.id === id ? { ...e, available } : e)));
@@ -88,9 +95,9 @@ function App() {
     );
   };
 
-  const handleLoadVoyage = (v: Pick<Voyage, 'ship' | 'model' | 'cruiseName' | 'from' | 'to' | 'date' | 'seaLegs' | 'portEntry' | 'standbyEntry' | 'anchorageEntry'>) => {
+  const handleLoadVoyage = (v: Pick<Voyage, 'ship' | 'conditionPct' | 'cruiseName' | 'from' | 'to' | 'date' | 'seaLegs' | 'portEntry' | 'standbyEntry' | 'anchorageEntry'>) => {
     if (v.ship) handleShipChange(v.ship);
-    if (v.model) setModel(v.model);
+    if (typeof v.conditionPct === 'number') setSettings((prev) => ({ ...prev, conditionPct: v.conditionPct! }));
     setCruiseName(v.cruiseName);
     setVoyageFrom(v.from);
     setVoyageTo(v.to);
@@ -108,8 +115,8 @@ function App() {
 
       <EnginePanel engines={engines} results={result.engineResults} onToggle={handleToggle} onFuelChange={handleFuelChange} />
       <ParametersPanel
-        speed={speed} settings={settings} model={model} maxSpeed={shipMaxSpeed}
-        onSpeedChange={setSpeed} onSettingsChange={setSettings} onModelChange={handleModelChange}
+        speed={speed} settings={settings} maxSpeed={shipMaxSpeed}
+        onSpeedChange={setSpeed} onSettingsChange={setSettings}
       />
       <ResultsPanel result={result} />
 
@@ -140,7 +147,7 @@ function App() {
           <VoyageSummary legs={legs} portEntry={portEntry} standbyEntry={standbyEntry} anchorageEntry={anchorageEntry} hotelLoad={settings.hotelLoad} sfocDet={settings.sfocDet} />
 
           <VoyageExport
-            ship={ship} model={model}
+            ship={ship} conditionPct={settings.conditionPct}
             cruiseName={cruiseName} from={voyageFrom} to={voyageTo} date={voyageDate}
             legs={legs} portEntry={portEntry} standbyEntry={standbyEntry} anchorageEntry={anchorageEntry}
             hotelLoad={settings.hotelLoad} sfocDet={settings.sfocDet}

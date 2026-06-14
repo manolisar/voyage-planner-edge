@@ -1,8 +1,8 @@
 import { useRef } from 'react';
-import type { SeaLeg, PortEntry, StandbyEntry, AnchorageEntry, Voyage, ShipId, CurveModel } from '../../types';
+import type { SeaLeg, PortEntry, StandbyEntry, AnchorageEntry, Voyage, ShipId } from '../../types';
 import { computeStaticConsumption, computePortConsumption } from '../../engine/consumption';
 
-type LoadedVoyage = Pick<Voyage, 'ship' | 'model' | 'cruiseName' | 'from' | 'to' | 'date' | 'seaLegs' | 'portEntry' | 'standbyEntry' | 'anchorageEntry'>;
+type LoadedVoyage = Pick<Voyage, 'ship' | 'conditionPct' | 'cruiseName' | 'from' | 'to' | 'date' | 'seaLegs' | 'portEntry' | 'standbyEntry' | 'anchorageEntry'>;
 
 function sanitizeFilename(s: string): string {
   return s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -20,9 +20,6 @@ function isShipId(value: unknown): value is ShipId {
   return value === 'EG' || value === 'AX' || value === 'BY' || value === 'AT' || value === 'XL';
 }
 
-function isCurveModel(value: unknown): value is CurveModel {
-  return value === 'static' || value === 'dynamic';
-}
 
 function isSeaLeg(value: unknown): value is SeaLeg {
   if (!value || typeof value !== 'object') return false;
@@ -86,7 +83,7 @@ function parseVoyage(value: unknown): LoadedVoyage | null {
 
   return {
     ship: isShipId(voyage.ship) ? voyage.ship : undefined,
-    model: isCurveModel(voyage.model) ? voyage.model : undefined,
+    conditionPct: isFiniteNumber(voyage.conditionPct) ? voyage.conditionPct : undefined,
     cruiseName: typeof voyage.cruiseName === 'string' ? voyage.cruiseName : '',
     from: voyage.from,
     to: voyage.to,
@@ -100,7 +97,7 @@ function parseVoyage(value: unknown): LoadedVoyage | null {
 
 interface Props {
   ship: ShipId;
-  model: CurveModel;
+  conditionPct: number;
   cruiseName: string;
   from: string;
   to: string;
@@ -114,7 +111,7 @@ interface Props {
   onLoadVoyage: (v: LoadedVoyage) => void;
 }
 
-export default function VoyageExport({ ship, model, cruiseName, from, to, date, legs, portEntry, standbyEntry, anchorageEntry, hotelLoad, sfocDet, onLoadVoyage }: Props) {
+export default function VoyageExport({ ship, conditionPct, cruiseName, from, to, date, legs, portEntry, standbyEntry, anchorageEntry, hotelLoad, sfocDet, onLoadVoyage }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
@@ -135,7 +132,7 @@ export default function VoyageExport({ ship, model, cruiseName, from, to, date, 
     }
 
     const voyage: Voyage = {
-      ship, model,
+      ship, conditionPct,
       cruiseName, from, to, date, seaLegs: legs,
       portEntry, portFuel,
       standbyEntry, standbyFuel: stbyFuel,

@@ -38,10 +38,10 @@ export default function SettingsModal({ open, settings, onSave, onClose }: Props
 
   const fields: { label: string; key: keyof VesselSettings; hint: string; min: number; max: number; step: number }[] = [
     { label: 'Hotel Load', key: 'hotelLoad', hint: 'kW — nominal 6 MW', min: 0, max: 20000, step: 100 },
-    { label: 'Sea Margin', key: 'seaMargin', hint: '%', min: -10, max: 20, step: 0.5 },
+    { label: 'Condition Factor', key: 'conditionPct', hint: '% × Static prop power (100 = clean hull)', min: 50, max: 200, step: 1 },
     { label: 'SFOC Deterioration', key: 'sfocDet', hint: '%', min: 0, max: 5, step: 0.1 },
-    { label: 'Propulsion Auxiliaries', key: 'propAux', hint: 'kW — bow thrusters, steering gear (when underway)', min: 0, max: 5000, step: 100 },
-    { label: 'DG Load Limit', key: 'loadLimit', hint: '% of MCR — max continuous load, any fuel (plant nominal 82%)', min: 50, max: 100, step: 1 },
+    { label: 'Sailing Auxiliaries', key: 'sailingAux', hint: 'kW — underway only (nominal 1.5 MW)', min: 0, max: 5000, step: 100 },
+    { label: 'PMS Start Threshold', key: 'pmsStart', hint: '% busbar load — starts next DG (M40E4937 = 85%)', min: 60, max: 100, step: 1 },
   ];
 
   return (
