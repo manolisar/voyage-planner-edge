@@ -18,7 +18,7 @@ function Input({ label, hint, name, value, onChange, min, max, step }: {
   const hintId = `${id}-hint`;
   return (
     <div>
-      <label htmlFor={id} className="block text-[0.68rem] font-bold tracking-[1.5px] uppercase text-dim mb-1.5">{label}</label>
+      <label htmlFor={id} className="flex items-end min-h-[1.6rem] text-[0.68rem] font-bold tracking-[1.5px] uppercase text-dim mb-1.5">{label}</label>
       <input
         id={id}
         name={name}
@@ -53,10 +53,10 @@ export default function ParametersPanel({ speed, settings, maxSpeed, onSpeedChan
           onChange={(v) => onSettingsChange({ ...settings, hotelLoad: v })} min={0} max={20000} step={100} />
         <Input label="Sailing Aux" hint="kW — underway only (nominal 1.5 MW)" name="sailingAux" value={settings.sailingAux}
           onChange={(v) => onSettingsChange({ ...settings, sailingAux: v })} min={0} max={5000} step={100} />
-        <Input label="SFOC Deterioration" hint="% (0–5)" name="sfocDet" value={settings.sfocDet}
+        <Input label="SFOC Decay" hint="% deterioration (0–5)" name="sfocDet" value={settings.sfocDet}
           onChange={(v) => onSettingsChange({ ...settings, sfocDet: v })} min={0} max={5} step={0.1} />
         <div>
-          <label htmlFor={shareId} className="block text-[0.68rem] font-bold tracking-[1.5px] uppercase text-dim mb-1.5">Load Sharing</label>
+          <label htmlFor={shareId} className="flex items-end min-h-[1.6rem] text-[0.68rem] font-bold tracking-[1.5px] uppercase text-dim mb-1.5">Load Sharing</label>
           <select
             id={shareId}
             value={settings.shareMode}
